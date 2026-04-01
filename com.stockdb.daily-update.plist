@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS launchd 定时任务：每个工作日 17:30 自动运行每日更新。
+
+  安装方法：
+    cp com.stockdb.daily-update.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.stockdb.daily-update.plist
+
+  卸载方法：
+    launchctl unload ~/Library/LaunchAgents/com.stockdb.daily-update.plist
+
+  手动触发：
+    launchctl start com.stockdb.daily-update
+
+  注意：修改 ProgramArguments 中的路径为你的实际路径。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stockdb.daily-update</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/python3</string>
+        <string>/Users/zyzbot/MyProject/StockDB/scripts/daily_update.py</string>
+    </array>
+
+    <!-- 工作日 18:30 运行（龙虎榜约 18:00 发布，margin_detail 补录前日 T+1 数据） -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <!-- 周一 -->
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>18</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <!-- 周二 -->
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>18</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <!-- 周三 -->
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>18</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <!-- 周四 -->
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>18</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <!-- 周五 -->
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>18</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+    </array>
+
+    <!-- 每周六 10:00 修复复权因子 -->
+    <!-- 取消注释以启用：
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Weekday</key><integer>6</integer>
+        <key>Hour</key><integer>10</integer>
+        <key>Minute</key><integer>0</integer>
+    </dict>
+    -->
+
+    <key>StandardOutPath</key>
+    <string>/Users/zyzbot/MyProject/StockDB/logs/launchd_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/zyzbot/MyProject/StockDB/logs/launchd_stderr.log</string>
+
+    <!-- 如果错过运行时间（如机器关机），下次开机后立即补跑 -->
+    <key>RunAtLoad</key>
+    <false/>
+
+</dict>
+</plist>

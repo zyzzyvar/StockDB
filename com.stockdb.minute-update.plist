@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS launchd 定时任务：每个工作日 15:30 自动运行5分钟K线 + 筹码分布增量更新。
+
+  安装方法：
+    cp com.stockdb.minute-update.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.stockdb.minute-update.plist
+
+  卸载方法：
+    launchctl unload ~/Library/LaunchAgents/com.stockdb.minute-update.plist
+
+  手动触发：
+    launchctl start com.stockdb.minute-update
+
+  注意：
+    - 15:30 运行（收盘后30分钟），Baostock 数据即时可用
+    - 筹码分布全量更新约需90分钟（5490只 × 1s/只）
+    - 总运行时间约 95 分钟
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stockdb.minute-update</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/python3</string>
+        <string>/Users/zyzbot/MyProject/StockDB/scripts/daily_update_minute.py</string>
+    </array>
+
+    <!-- 工作日 15:30 运行 -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <!-- 周一 -->
+        <dict>
+            <key>Weekday</key><integer>1</integer>
+            <key>Hour</key><integer>15</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <!-- 周二 -->
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>15</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <!-- 周三 -->
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>15</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <!-- 周四 -->
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>15</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+        <!-- 周五 -->
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>15</integer>
+            <key>Minute</key><integer>30</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/zyzbot/MyProject/StockDB/logs/launchd_minute_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/zyzbot/MyProject/StockDB/logs/launchd_minute_stderr.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+</dict>
+</plist>

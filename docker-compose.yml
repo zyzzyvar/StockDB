@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: stockdb_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       stockdb
+      POSTGRES_USER:     stockdb_user
+      POSTGRES_PASSWORD: pc3jUs4l3D7c_puPGUuikg
+      TZ:                Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - stockdb_data:/var/lib/postgresql/data
+    shm_size: 512m
+    command: >
+      postgres
+        -c shared_buffers=512MB
+        -c effective_cache_size=1GB
+        -c work_mem=32MB
+        -c maintenance_work_mem=256MB
+        -c max_connections=50
+        -c wal_buffers=32MB
+
+volumes:
+  stockdb_data:
+    name: stockdb_data
