@@ -30,6 +30,12 @@ REQUEST_INTERVAL = 0.4
 BAOSTOCK_INTERVAL = 0.05    # 每次 API 调用后等待（秒），约 20 QPS
 MINUTE_5MIN_START = "20240101"  # 5分钟K线历史起始日期
 
+# ── 美股（yfinance + NASDAQ Trader）──────────────────────────
+US_DAILY_START     = os.getenv("US_DAILY_START", "20240101")   # 两年日线回补起始
+US_YF_CHUNK_SIZE   = int(os.getenv("US_YF_CHUNK_SIZE", "100")) # yf.download 每批 ticker 数
+US_YF_CHUNK_SLEEP  = float(os.getenv("US_YF_CHUNK_SLEEP", "1.5")) # 批间等待（秒）
+NASDAQ_TRADER_BASE = "https://www.nasdaqtrader.com/dynamic/SymDir"
+
 # 需要跟踪的核心指数
 TRACKED_INDICES = [
     "000001.SH",   # 上证指数

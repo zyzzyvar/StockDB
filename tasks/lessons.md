@@ -26,9 +26,10 @@
 
 ## 环境 / 基础设施
 
-### L05 — launchd 任务使用绝对 Python 路径
-**错误：** plist 中写 `/usr/bin/python3`（系统 Python），无已安装包，导致 `ModuleNotFoundError`。
-**规则：** launchd 运行环境无 PATH，必须使用用户 Python 的绝对路径 `/usr/local/bin/python3`；修改 plist 后必须 unload/load 重载。
+### L05 — launchd 任务必须使用项目专属 venv
+**错误①：** plist 中写 `/usr/bin/python3`（系统 Python），无已安装包，导致 `ModuleNotFoundError`。
+**错误②（2026-05-11）：** plist 写 `/usr/local/bin/python3`（浮动符号链接），Homebrew 升级 Python 3.13→3.14 后链接指向新版，旧版包（loguru 等）全部失效，日志断更 **19 天**才被发现。
+**规则（最终方案）：** 在项目根创建 `.venv`（`python3.13 -m venv .venv`），plist 写 `.venv/bin/python` 的绝对路径。venv 内 Python 路径独立于 Homebrew 符号链接，升级后不受影响；依赖通过 `requirements.txt` 锁定。修改 plist 后必须 unload/load 重载。
 
 ### L06 — psql 需要手动加 PATH
 **规则：** Postgres.app 的 bin 目录不在系统 PATH，需在 `~/.zshrc` 中添加：

@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS launchd 定时任务：美股5分钟K线每日增量更新。
+
+  触发时间：北京周二~周六 06:00
+    - 美股收盘 16:00 ET ≈ 北京次日 04:00-05:00（含 DST 余量）
+    - 北京周二捕获美股周一；周六捕获周五
+    - 美股节假日：is_open=0，pending 为空，任务自动 no-op
+
+  安装方法：
+    cp com.stockdb.us-minute-update.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.stockdb.us-minute-update.plist
+
+  卸载方法：
+    launchctl unload ~/Library/LaunchAgents/com.stockdb.us-minute-update.plist
+
+  手动触发：
+    launchctl start com.stockdb.us-minute-update
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stockdb.us-minute-update</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/zyzbot/MyProject/StockDB/.venv/bin/python</string>
+        <string>/Users/zyzbot/MyProject/StockDB/scripts/daily_update_us_minute.py</string>
+    </array>
+
+    <!-- 北京周二~周六 06:00（覆盖美股周一~周五收盘后次日） -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <!-- 周二（捕获美股周一） -->
+        <dict>
+            <key>Weekday</key><integer>2</integer>
+            <key>Hour</key><integer>6</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <!-- 周三（捕获美股周二） -->
+        <dict>
+            <key>Weekday</key><integer>3</integer>
+            <key>Hour</key><integer>6</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <!-- 周四（捕获美股周三） -->
+        <dict>
+            <key>Weekday</key><integer>4</integer>
+            <key>Hour</key><integer>6</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <!-- 周五（捕获美股周四） -->
+        <dict>
+            <key>Weekday</key><integer>5</integer>
+            <key>Hour</key><integer>6</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+        <!-- 周六（捕获美股周五） -->
+        <dict>
+            <key>Weekday</key><integer>6</integer>
+            <key>Hour</key><integer>6</integer>
+            <key>Minute</key><integer>0</integer>
+        </dict>
+    </array>
+
+    <key>StandardOutPath</key>
+    <string>/Users/zyzbot/MyProject/StockDB/logs/launchd_us_minute_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/zyzbot/MyProject/StockDB/logs/launchd_us_minute_stderr.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+</dict>
+</plist>

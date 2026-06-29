@@ -9,3 +9,8 @@ pandas-ta>=0.3.14b
 loguru>=0.7.0
 tenacity>=8.2.0
 baostock>=0.8.8
+
+# 美股数据
+yfinance>=0.2.50
+pandas-market-calendars>=4.4.0
+tzdata>=2024.1

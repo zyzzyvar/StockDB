@@ -144,24 +144,31 @@ StockDB/
 
 ```
 stockdb (PostgreSQL 16)
-  ├── stock_basic              静态基础信息
-  ├── trade_calendar           交易日历
-  ├── daily_price     [分区]   日线 OHLCV
-  ├── adj_factor      [分区]   前复权因子
-  ├── daily_fundamental [分区] 每日估值/市值/换手率
-  ├── index_basic              指数基本信息
-  ├── index_daily              指数日线行情
-  ├── top_list                 龙虎榜汇总
-  ├── margin_detail            融资融券明细
-  ├── block_trade              大宗交易
-  ├── money_flow               个股资金流向
-  ├── limit_list               涨跌停统计
-  ├── minute_bar_5min [分区]   5分钟K线（2024年起）
-  ├── chip_distribution        筹码分布（近90天滚动）
-  └── data_update_log          更新运维日志
+  ├── A股
+  │   ├── stock_basic              静态基础信息
+  │   ├── trade_calendar           交易日历（沪深，SSE）
+  │   ├── daily_price     [分区]   日线 OHLCV（1990~2030）
+  │   ├── adj_factor      [分区]   前复权因子（1990~2030）
+  │   ├── daily_fundamental [分区] 每日估值/市值/换手率（1990~2030）
+  │   ├── index_basic              指数基本信息
+  │   ├── index_daily              指数日线行情
+  │   ├── top_list                 龙虎榜汇总
+  │   ├── margin_detail            融资融券明细
+  │   ├── block_trade              大宗交易
+  │   ├── money_flow               个股资金流向
+  │   ├── limit_list               涨跌停统计
+  │   ├── minute_bar_5min [分区]   5分钟K线（2024~2026）
+  │   └── chip_distribution        筹码分布（近90天滚动）
+  ├── 美股
+  │   ├── us_stock_basic           美股/ETF 基础信息（~12000只，含 ETF）
+  │   ├── us_trade_calendar        NYSE 交易日历（含半日市/夏令时）
+  │   ├── us_daily_price  [分区]   美股日线 OHLC+复权（2023~2030）
+  │   └── us_minute_bar_5min[分区] 美股5分钟K线，ET时间（2026~2030）
+  └── 运维
+      └── data_update_log          更新运维日志
 ```
 
-`daily_price`、`adj_factor`、`daily_fundamental` 按年分区（1990~2030）；`minute_bar_5min` 按年分区（2024~2026）。所有分区表均在 `trade_date` 上建 BRIN 索引，显著提升时间范围查询性能。
+A股分区表（`daily_price`、`adj_factor`、`daily_fundamental`）按年（1990~2030）；A股 `minute_bar_5min` 按年（2024~2026）；美股 `us_daily_price` 按年（2023~2030）；美股 `us_minute_bar_5min` 按年（2026~2030）。所有分区表均在 `trade_date` 上建 BRIN 索引，显著提升时间范围查询性能。
 
 ---
 
@@ -464,6 +471,90 @@ finished_at   TIMESTAMP  -- 结束时间
 
 ---
 
+### 3.3 美股表详细说明
+
+#### `us_stock_basic` — 美股基础信息
+
+数据来源 NASDAQ Trader 官方符号文件（`nasdaqlisted.txt` + `otherlisted.txt`），每周一自动刷新。
+
+```sql
+ts_code       VARCHAR(16) PRIMARY KEY  -- 'AAPL.US' / 'BRK-B.US'（沿用后缀惯例）
+symbol        VARCHAR(12)              -- 原始 NASDAQ 符号（如 'BRK.B'）
+yf_symbol     VARCHAR(12)              -- yfinance 格式（点→横杠，如 'BRK-B'）
+name          VARCHAR(120)             -- 证券全称
+exchange      VARCHAR(16)              -- NASDAQ / NYSE / NYSE ARCA / BATS 等
+security_type VARCHAR(10)              -- CS=股票  ETF=交易所基金
+is_etf        SMALLINT                 -- 1=ETF  0=股票
+list_status   VARCHAR(2)               -- L=在市  D=退市（已从符号文件消失）
+updated_at    TIMESTAMP                -- 最后刷新时间
+```
+
+**股票池**：约 12,000 只（含 ETF），NYSE、NASDAQ、NYSE ARCA、BATS 全市场覆盖。
+
+---
+
+#### `us_trade_calendar` — NYSE 交易日历
+
+数据来源 `pandas_market_calendars`（XNYS），自动处理节假日、半日市（感恩节次日等）和夏令时。
+
+```sql
+cal_date        DATE PRIMARY KEY  -- 日历日期
+is_open         SMALLINT          -- 1=交易日  0=休市
+pretrade_date   DATE              -- 前一个交易日（NULL=无）
+is_early_close  SMALLINT          -- 1=半日市（13:00 ET 收盘）
+market_close_et TIME              -- 实际收盘时间（ET 墙钟，正常 16:00）
+exchange        VARCHAR(10)       -- 'NYSE'
+```
+
+---
+
+#### `us_daily_price` — 美股日线行情 ⭐
+
+按年分区（2023~2030），数据来源 yfinance。
+
+```sql
+ts_code    VARCHAR(16)   -- 'AAPL.US' / 'BRK-B.US'
+trade_date DATE          -- 交易日期
+open       NUMERIC(16,4) -- 开盘价（USD）
+high       NUMERIC(16,4) -- 最高价
+low        NUMERIC(16,4) -- 最低价
+close      NUMERIC(16,4) -- 收盘价
+adj_close  NUMERIC(16,4) -- 复权收盘价（yfinance 直接提供）
+pre_close  NUMERIC(16,4) -- 前收盘价（系统计算，跨 ts_code 分组 shift）
+change     NUMERIC(16,4) -- 涨跌额 = close - pre_close
+pct_chg    NUMERIC(12,4) -- 涨跌幅（%）
+vol        BIGINT        -- 成交量（股）
+amount     NUMERIC(20,4) -- 成交额（NULL，yfinance 无此字段）
+PRIMARY KEY (ts_code, trade_date)
+```
+
+**历史数据**：从 2024-01-01 起回补两年。`amount` 字段始终为 NULL，消费方需注意。
+
+---
+
+#### `us_minute_bar_5min` — 美股5分钟K线 ⭐
+
+按年分区（2026~2030），数据来源 yfinance。**无历史回补**（yfinance intraday 仅支持近60天）。
+
+```sql
+ts_code    VARCHAR(16)   -- 'AAPL.US'
+trade_date DATE          -- 交易日（ET 本地日期）
+trade_time TIME          -- 5分钟 bar 开始时间（**ET 墙钟时间，非 UTC**）
+open       NUMERIC(16,4)
+high       NUMERIC(16,4)
+low        NUMERIC(16,4)
+close      NUMERIC(16,4)
+vol        BIGINT
+amount     NUMERIC(20,4) -- NULL
+PRIMARY KEY (ts_code, trade_date, trade_time)
+```
+
+> ⚠️ **`trade_time` 为 ET（America/New_York）墙钟时间**，不是 UTC。夏令时期间 ET=UTC-4，冬令时 ET=UTC-5。消费方若需转换时区请自行加偏移量。
+
+**交易时段**：09:30~16:00 ET，每个交易日约 78 根 K 线；半日市约 42 根。
+
+---
+
 ## 4. 数据逻辑
 
 ### 4.1 前复权价格计算
@@ -724,6 +815,9 @@ df[["close", "ma20", "ma60", "rsi14"]].plot(subplots=True, figsize=(14, 8))
 | 全市场截面选股 | daily_price + daily_fundamental + stock_basic |
 | 5分钟K线技术分析 | minute_bar_5min（2024年起，全市场） |
 | 筹码分布 / 获利比例分析 | chip_distribution（近90天滚动） |
+| **美股日线行情**（~12000只 NYSE+NASDAQ+ETF） | us_daily_price（2024-01-01起，含复权收盘价） |
+| **美股5分钟K线**（全市场，ET时间） | us_minute_bar_5min（2026-01-01起，无历史回补） |
+| 美股/A股对比分析 | us_daily_price + daily_price |
 
 ### ❌ 未实现（可按需扩展）
 
@@ -735,12 +829,13 @@ df[["close", "ma20", "ma60", "rsi14"]].plot(subplots=True, figsize=(14, 8))
 | 行业/概念板块分类 | Tushare `index_classify()` |
 | 分红送股记录 | Tushare `dividend()` |
 | 实时行情（盘中） | 需接入实时数据源，超出本系统定位 |
+| 美股成交额 | yfinance 无此字段；可考虑 Polygon.io 等付费源 |
 
 ---
 
 ## 7. 用户与权限
 
-本数据库实例（`stockdb`）运行在本机，当前共有 4 个角色/用户。
+本数据库实例（`stockdb`）运行在本机，当前共有 5 个角色/用户。
 
 ### 7.1 用户总览
 
@@ -750,6 +845,7 @@ df[["close", "ma20", "ma60", "rsi14"]].plot(subplots=True, figsize=(14, 8))
 | `stockdb_user` | 普通用户（读写） | ✅ | ❌ | StockDB 数据管道（fetchers / loaders / scripts） |
 | `stockscan_user` | 普通用户（只读） | ✅ | ❌ | 外部分析应用（StockScan 等） |
 | `stockllm_app` | 普通用户（读写） | ✅ | ❌ | StockLLM — K线图 LLM 分析应用 |
+| `mktmood_app` | 普通用户（只读） | ✅ | ❌ | 金融市场氛围监控应用（从 10.7.7.66 远程连接） |
 
 ---
 
@@ -885,14 +981,17 @@ updated_at       TIMESTAMPTZ
 
 ### 8.2 每日自动更新
 
-系统通过 launchd 注册了两个定时任务，**无需手动操作**：
+系统通过 launchd 注册了三个定时任务，**无需手动操作**：
 
-| 时间 | 脚本 | 内容 | 耗时 |
+| 触发时间（北京） | 脚本 | 内容 | 耗时 |
 |------|------|------|------|
-| 每工作日 **15:30** | `daily_update_minute.py` | 5分钟K线（Baostock）+ 筹码分布（AKShare） | 约 100 分钟 |
-| 每工作日 **18:30** | `daily_update.py` | 日线 OHLCV / 基本面 / 复权因子 / 资金流向 / 龙虎榜 / 融资融券 / 大宗 / 涨跌停 | 约 5 分钟 |
+| 每工作日 **15:30** | `daily_update_minute.py` | A股5分钟K线（Baostock）+ 筹码分布（AKShare） | 约 100 分钟 |
+| 每工作日 **18:30** | `daily_update.py` | A股日线 + 美股日线（daily_update.py 已集成美股段） | 约 10 分钟 |
+| 周二~周六 **06:00** | `daily_update_us_minute.py` | 美股5分钟K线（前一美股交易日，yfinance） | 约 30 分钟 |
 
-> **18:30 的原因**：龙虎榜（`top_list`）约 18:00 由 Tushare 发布；融资融券（`margin_detail`）为 T+1 数据，系统会在次日自动补录前一交易日数据。
+> **美股日线并入 18:30 任务**：北京 18:30 ≈ 美东 06:30，前一个美股交易日已完整收盘，`daily_update.py` 中的 `latest_completed_us_session()` 自动检测并写入。
+>
+> **美股分钟任务时间解释**：美股 16:00 ET 收盘 ≈ 北京次日 04:00/05:00（冬/夏令时），06:00 北京有充足余量。北京周二捕获美股周一，以此类推；美股节假日时任务自动 no-op。
 
 验证定时任务注册状态：
 
@@ -918,8 +1017,15 @@ python3 scripts/daily_update_minute.py
 强制更新指定日期：
 
 ```bash
+# A股
 python3 scripts/daily_update.py --date 20260325
 python3 scripts/daily_update_minute.py --date 20260325 --skip-chip
+
+# 美股（仅美股段）
+python3 scripts/daily_update.py --us-only --date 20260325
+
+# 美股5分钟K线（手动指定日期）
+python3 scripts/daily_update_us_minute.py --date 20260325
 ```
 
 ---
@@ -987,9 +1093,9 @@ SELECT pg_size_pretty(pg_database_size('stockdb'));
 
 ---
 
-### 8.7 历史数据补充加载
+### 8.7 A股历史数据补充加载
 
-如需补充加载某段历史数据（支持断点续传，已有数据自动跳过）：
+如需补充加载某段 A 股历史数据（支持断点续传，已有数据自动跳过）：
 
 ```bash
 # 补充特定表的特定时段
@@ -998,6 +1104,37 @@ python3 scripts/init_load.py \
   --end   20191231 \
   --tables daily_price,adj_factor,daily_fundamental
 ```
+
+---
+
+### 8.8 美股历史数据初始化 / 重新回补
+
+```bash
+cd /Users/zyzbot/MyProject/StockDB
+
+# 小样本验证（20 只 × 1 个月，不写全量）
+.venv/bin/python scripts/init_load_us.py \
+  --limit 20 --start 20240101 --end 20240131
+
+# 全量回补（2024-01-01 起，约 12000 只 × 130 批，需数十分钟，建议 nohup）
+nohup .venv/bin/python scripts/init_load_us.py \
+  --skip-calendar --skip-symbols \
+  >> logs/init_load_us_$(date +%Y%m%d).log 2>&1 &
+
+# 仅刷新股票池（每周一由 daily_update.py 自动运行，也可手动）
+.venv/bin/python scripts/init_load_us.py --skip-calendar --skip-daily
+
+# 补录指定时间段（幂等，可重跑）
+.venv/bin/python scripts/init_load_us.py \
+  --start 20250101 --end 20250630 \
+  --skip-calendar --skip-symbols
+```
+
+**注意**：
+- `us_daily_price` 按符号批量拉取（非逐日），大幅减少 API 调用
+- yfinance 有频率限制，建议美股**非交易时段**（北京时间上午）运行大批量回补
+- 运行日志：`logs/init_load_us_YYYYMMDD.log`
+- 5分钟K线**无历史回补**（yfinance intraday 仅支持近60天），从 launchd 启动日起自动积累
 
 ---
 

@@ -6,8 +6,11 @@
     python scripts/daily_update.py               # 自动检测最新未更新交易日
     python scripts/daily_update.py --date 20250318  # 强制指定日期
     python scripts/daily_update.py --repair-adj     # 修复近30天复权因子
+    python scripts/daily_update.py --us-only        # 仅运行美股更新
+    python scripts/daily_update.py --skip-us        # 跳过美股更新
 
 通过 launchd 或 cron 定时调用（见 README）。
+18:30 北京时间 ≈ 06:30 ET，美股最近已收盘 session 为前一个美股交易日。
 """
 import sys
 import argparse
@@ -203,11 +206,59 @@ def update_trade_calendar():
         log.error(f"trade_calendar 更新失败: {e}")
 
 
+def update_us_trade_calendar():
+    """更新美股交易日历到未来一年"""
+    try:
+        from stockdb.loaders.us_trade_calendar import load_us_trade_calendar
+        load_us_trade_calendar()
+    except Exception as e:
+        log.error(f"us_trade_calendar 更新失败: {e}")
+
+
+def update_us_stock_basic():
+    """每周一更新美股股票基本信息"""
+    if date.today().weekday() == 0:  # 周一
+        try:
+            from stockdb.loaders.us_stock_basic import load_us_stock_basic
+            n = load_us_stock_basic()
+            log.info(f"us_stock_basic 周度更新: {n} rows")
+        except Exception as e:
+            log.error(f"us_stock_basic 更新失败: {e}")
+
+
+def get_us_pending_trade_dates(date_override: str = None) -> list:
+    """获取美股日线待更新交易日"""
+    if date_override:
+        return [date_override]
+    try:
+        from stockdb.utils.us_session import get_us_pending_trade_dates as _get
+        from stockdb.config import US_DAILY_START
+        return _get("us_daily_price", US_DAILY_START)
+    except Exception as e:
+        log.error(f"get_us_pending_trade_dates 失败: {e}")
+        return []
+
+
+def update_us_daily(trade_date_str: str):
+    """更新单个美股交易日的日线数据"""
+    log.info(f"{'─'*50}")
+    log.info(f"美股日线更新: {trade_date_str}")
+    log.info(f"{'─'*50}")
+    try:
+        from stockdb.loaders.us_daily_price import load_us_daily_price_by_date
+        n = load_us_daily_price_by_date(trade_date_str)
+        log.info(f"us_daily_price {trade_date_str}: {n} rows")
+    except Exception as e:
+        log.error(f"us_daily_price {trade_date_str}: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="StockDB 每日增量更新")
-    parser.add_argument("--date",       help="强制指定交易日 YYYYMMDD")
+    parser.add_argument("--date",       help="强制指定交易日 YYYYMMDD（A股和美股共用）")
     parser.add_argument("--repair-adj", action="store_true",
                         help="修复近30天复权因子（每周运行一次）")
+    parser.add_argument("--us-only",    action="store_true", help="仅运行美股更新")
+    parser.add_argument("--skip-us",    action="store_true", help="跳过美股更新")
     args = parser.parse_args()
 
     log.info(f"StockDB daily_update 启动: {datetime.now():%Y-%m-%d %H:%M:%S}")
@@ -218,23 +269,35 @@ def main():
         repair_recent_adj_factors(days=30)
         return
 
-    # 更新交易日历和股票基本信息
-    update_trade_calendar()
-    update_stock_basic()
+    # ── A 股更新 ─────────────────────────────────────────────────────────
+    if not args.us_only:
+        update_trade_calendar()
+        update_stock_basic()
 
-    # 确定要更新的交易日
-    if args.date:
-        trade_dates = [args.date]
-    else:
-        trade_dates = get_pending_trade_dates()
-        if not trade_dates:
-            log.info("没有待更新的交易日，退出")
-            return
+        if args.date:
+            trade_dates = [args.date]
+        else:
+            trade_dates = get_pending_trade_dates()
 
-    log.info(f"待更新交易日: {trade_dates}")
+        if trade_dates:
+            log.info(f"待更新交易日（A股）: {trade_dates}")
+            for td in trade_dates:
+                update_one_day(td)
+        else:
+            log.info("A股：没有待更新的交易日")
 
-    for td in trade_dates:
-        update_one_day(td)
+    # ── 美股更新 ──────────────────────────────────────────────────────────
+    if not args.skip_us:
+        update_us_trade_calendar()
+        update_us_stock_basic()
+
+        us_dates = get_us_pending_trade_dates(args.date)
+        if us_dates:
+            log.info(f"待更新交易日（美股）: {us_dates}")
+            for td in us_dates:
+                update_us_daily(td)
+        else:
+            log.info("美股：没有待更新的交易日")
 
     log.info(f"daily_update 完成: {datetime.now():%Y-%m-%d %H:%M:%S}")
 
